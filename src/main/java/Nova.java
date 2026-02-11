@@ -20,15 +20,15 @@ public class Nova {
     }
 
     public static void main(String[] args) {
+        new Nova().run();
+    }
 
+    private void run() {
         Scanner sc = new Scanner(System.in);
         Task[] tasks = new Task[MAX_TASKS];
         int taskCount = 0;
 
-        printLine();
-        System.out.println("     Hello! I'm Nova");
-        System.out.println("     What can I do for you?");
-        printLine();
+        printWelcome();
 
         while (true) {
             String input = sc.nextLine();
@@ -38,140 +38,93 @@ public class Nova {
                 break;
             }
 
-            printLine();
-
-            switch (command) {
-            case LIST:
-                listTasks(tasks, taskCount);
-                break;
-
-            case MARK:
-                markTask(tasks, taskCount, input, true);
-                break;
-
-            case UNMARK:
-                markTask(tasks, taskCount, input, false);
-                break;
-
-            case TODO:
-                taskCount = addTodo(tasks, taskCount, input);
-                break;
-
-            case DEADLINE:
-                taskCount = addDeadline(tasks, taskCount, input);
-                break;
-
-            case EVENT:
-                taskCount = addEvent(tasks, taskCount, input);
-                break;
-
-            default:
-                System.out.println("     Unknown command.");
-            }
-
-            printLine();
+            printDivider();
+            taskCount = handleCommand(input, command, tasks, taskCount);
+            printDivider();
         }
 
-        printLine();
-        System.out.println("     Bye. Hope to see you again soon!");
-        printLine();
-
+        printGoodbye();
         sc.close();
     }
 
     // =========================
-    // LIST
+    // MAIN COMMAND HANDLER
     // =========================
-    private static void listTasks(Task[] tasks, int taskCount) {
-        System.out.println("     Here are the tasks in your list:");
-        for (int i = 0; i < taskCount; i++) {
-            System.out.println("     " + (i + 1) + "." + tasks[i]);
+    private int handleCommand(String input, Command command, Task[] tasks, int taskCount) {
+
+        switch (command) {
+        case LIST:
+            listTasks(tasks, taskCount);
+            return taskCount;
+
+        case MARK:
+            markTask(input, tasks, taskCount, true);
+            return taskCount;
+
+        case UNMARK:
+            markTask(input, tasks, taskCount, false);
+            return taskCount;
+
+        case TODO:
+            return addTodo(tasks, taskCount, input);
+
+        case DEADLINE:
+            return addDeadline(tasks, taskCount, input);
+
+        case EVENT:
+            return addEvent(tasks, taskCount, input);
+
+        default:
+            System.out.println("     Unknown command.");
+            return taskCount;
         }
     }
 
     // =========================
-    // ADD TODO
+    // TASK OPERATIONS
     // =========================
-    private static int addTodo(Task[] tasks, int taskCount, String input) {
+    private int addTodo(Task[] tasks, int taskCount, String input) {
+        if (isTaskListFull(taskCount)) return taskListFull(taskCount);
 
-        if (taskCount >= MAX_TASKS) {
-            System.out.println("     Task list full! Cannot add more tasks.");
-            return taskCount;
-        }
-
-        String description = input.substring(5);
-        tasks[taskCount] = new Todo(description);
-        taskCount++;
-
-        printAddMessage(tasks[taskCount - 1], taskCount);
-        return taskCount;
+        String description = input.substring(5).trim();
+        return storeTask(tasks, taskCount, new Todo(description));
     }
 
-    // =========================
-    // ADD DEADLINE
-    // =========================
-    private static int addDeadline(Task[] tasks, int taskCount, String input) {
-
-        if (taskCount >= MAX_TASKS) {
-            System.out.println("     Task list full! Cannot add more tasks.");
-            return taskCount;
-        }
+    private int addDeadline(Task[] tasks, int taskCount, String input) {
+        if (isTaskListFull(taskCount)) return taskListFull(taskCount);
 
         try {
             String[] parts = input.substring(9).split(" /by ");
-            String description = parts[0];
-            String by = parts[1];
-
-            tasks[taskCount] = new Deadline(description, by);
-            taskCount++;
-
-            printAddMessage(tasks[taskCount - 1], taskCount);
-
+            String description = parts[0].trim();
+            String by = parts[1].trim();
+            return storeTask(tasks, taskCount, new Deadline(description, by));
         } catch (Exception e) {
             System.out.println("     Invalid format. Use: deadline <desc> /by <time>");
-        }
-
-        return taskCount;
-    }
-
-    // =========================
-    // ADD EVENT
-    // =========================
-    private static int addEvent(Task[] tasks, int taskCount, String input) {
-
-        if (taskCount >= MAX_TASKS) {
-            System.out.println("     Task list full! Cannot add more tasks.");
             return taskCount;
         }
+    }
+
+    private int addEvent(Task[] tasks, int taskCount, String input) {
+        if (isTaskListFull(taskCount)) return taskListFull(taskCount);
 
         try {
             String[] firstSplit = input.substring(6).split(" /from ");
-            String description = firstSplit[0];
-
+            String description = firstSplit[0].trim();
             String[] secondSplit = firstSplit[1].split(" /to ");
-            String from = secondSplit[0];
-            String to = secondSplit[1];
-
-            tasks[taskCount] = new Event(description, from, to);
-            taskCount++;
-
-            printAddMessage(tasks[taskCount - 1], taskCount);
-
+            String from = secondSplit[0].trim();
+            String to = secondSplit[1].trim();
+            return storeTask(tasks, taskCount, new Event(description, from, to));
         } catch (Exception e) {
             System.out.println("     Invalid format. Use: event <desc> /from <time> /to <time>");
+            return taskCount;
         }
-
-        return taskCount;
     }
 
-    // =========================
-    // MARK / UNMARK
-    // =========================
-    private static void markTask(Task[] tasks, int taskCount, String input, boolean markDone) {
+    private void markTask(String input, Task[] tasks, int taskCount, boolean markDone) {
         try {
-            int index = Integer.parseInt(input.split(" ")[1]) - 1;
+            int index = parseIndex(input);
 
-            if (index < 0 || index >= taskCount) {
+            if (!isValidIndex(index, taskCount)) {
                 System.out.println("     Invalid task number.");
                 return;
             }
@@ -191,17 +144,61 @@ public class Nova {
         }
     }
 
+    private int storeTask(Task[] tasks, int taskCount, Task task) {
+        tasks[taskCount] = task;
+        taskCount++;
+        printAddMessage(task, taskCount);
+        return taskCount;
+    }
+
+    private boolean isTaskListFull(int taskCount) {
+        return taskCount >= MAX_TASKS;
+    }
+
+    private int taskListFull(int taskCount) {
+        System.out.println("     Task list full! Cannot add more tasks.");
+        return taskCount;
+    }
+
+    private boolean isValidIndex(int index, int taskCount) {
+        return index >= 0 && index < taskCount;
+    }
+
+    private int parseIndex(String input) {
+        String[] parts = input.split(" ");
+        return Integer.parseInt(parts[1]) - 1;
+    }
+
+    private void listTasks(Task[] tasks, int taskCount) {
+        System.out.println("     Here are the tasks in your list:");
+        for (int i = 0; i < taskCount; i++) {
+            System.out.println("     " + (i + 1) + "." + tasks[i]);
+        }
+    }
+
     // =========================
-    // COMMON PRINT METHODS
+    // PRINT HELPERS
     // =========================
-    private static void printAddMessage(Task task, int taskCount) {
+    private void printAddMessage(Task task, int taskCount) {
         System.out.println("     Got it. I've added this task:");
         System.out.println("       " + task);
         System.out.println("     Now you have " + taskCount + " tasks in the list.");
     }
 
-    private static void printLine() {
+    private void printWelcome() {
+        printDivider();
+        System.out.println("     Hello! I'm Nova");
+        System.out.println("     What can I do for you?");
+        printDivider();
+    }
+
+    private void printGoodbye() {
+        printDivider();
+        System.out.println("     Bye. Hope to see you again soon!");
+        printDivider();
+    }
+
+    private void printDivider() {
         System.out.println("    ____________________________________________________________");
     }
 }
-

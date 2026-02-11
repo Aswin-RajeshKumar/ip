@@ -1,6 +1,6 @@
 public class Deadline extends Task {
 
-    protected String by;
+    private final String by;
 
     public Deadline(String description, String by) {
         super(description);
@@ -12,3 +12,4 @@ public class Deadline extends Task {
         return "[D]" + super.toString() + " (by: " + by + ")";
     }
 }
+
