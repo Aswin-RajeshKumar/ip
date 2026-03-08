@@ -1,195 +1,121 @@
-import java.util.Scanner;
-import java.util.ArrayList;
-import java.io.*;
-import java.nio.file.*;
+import java.io.IOException;
 
 public class Nova {
-    private static final String FILE_PATH = "./data/nova.txt";
-    private static final String DIR_PATH = "./data/";
+    private final Storage storage;
+    private TaskList tasks;
+    private final Ui ui;
 
-    private enum Command {
-        LIST, MARK, UNMARK, TODO, DEADLINE, EVENT, DELETE, BYE, UNKNOWN;
-
-        static Command from(String input) {
-            input = input.trim();
-            if (input.equals("list")) return LIST;
-            if (input.equals("bye")) return BYE;
-            if (input.startsWith("mark ")) return MARK;
-            if (input.startsWith("unmark ")) return UNMARK;
-            if (input.startsWith("todo")) return TODO;
-            if (input.startsWith("deadline")) return DEADLINE;
-            if (input.startsWith("event")) return EVENT;
-            if (input.startsWith("delete ")) return DELETE;
-            return UNKNOWN;
+    public Nova(String filePath) {
+        ui = new Ui();
+        storage = new Storage(filePath);
+        try {
+            tasks = new TaskList(storage.load());
+        } catch (IOException e) {
+            ui.showLoadingError();
+            tasks = new TaskList();
         }
     }
 
-    public static void main(String[] args) {
-        new Nova().run();
-    }
+    public void run() {
+        ui.showWelcome();
+        boolean isExit = false;
 
-    private void run() {
-        Scanner sc = new Scanner(System.in);
-        ArrayList<Task> tasks = new ArrayList<>();
-
-        loadTasks(tasks);
-        printWelcome();
-
-        while (true) {
-            String input = sc.nextLine().trim();
-            Command command = Command.from(input);
-
-            if (command == Command.BYE) break;
-
-            printDivider();
+        while (!isExit) {
+            String fullCommand = ui.readCommand();
+            ui.showLine();
             try {
-                handleCommand(input, command, tasks);
-                saveTasks(tasks);
-            } catch (NovaException e) {
-                System.out.println("     " + e.getMessage());
-            }
-            printDivider();
-        }
-
-        printGoodbye();
-        sc.close();
-    }
-
-    private void handleCommand(String input, Command command, ArrayList<Task> tasks) throws NovaException {
-        switch (command) {
-        case LIST -> listTasks(tasks);
-        case MARK -> markTask(input, tasks, true);
-        case UNMARK -> markTask(input, tasks, false);
-        case TODO -> addTodo(tasks, input);
-        case DEADLINE -> addDeadline(tasks, input);
-        case EVENT -> addEvent(tasks, input);
-        case DELETE -> deleteTasks(tasks, input);
-        default -> throw new NovaException("OOPS!!! I'm sorry, but I don't know what that means :-(");
-        }
-    }
-
-    private void saveTasks(ArrayList<Task> tasks) {
-        try {
-            Files.createDirectories(Paths.get(DIR_PATH));
-            BufferedWriter bw = new BufferedWriter(new FileWriter(FILE_PATH));
-            for (Task t : tasks) {
-                String type = (t instanceof Todo) ? "T" : (t instanceof Deadline) ? "D" : "E";
-                int done = t.isDone() ? 1 : 0;
-                String line = type + " | " + done + " | " + t.getDescription();
-                if (t instanceof Deadline) line += " | " + ((Deadline) t).getBy();
-                if (t instanceof Event) line += " | " + ((Event) t).getFrom() + " | " + ((Event) t).getTo();
-                bw.write(line);
-                bw.newLine();
-            }
-            bw.close();
-        } catch (IOException e) {
-            System.out.println("     Error saving file: " + e.getMessage());
-        }
-    }
-
-    private void loadTasks(ArrayList<Task> tasks) {
-        File f = new File(FILE_PATH);
-        if (!f.exists()) return;
-        try (Scanner s = new Scanner(f)) {
-            while (s.hasNext()) {
-                String line = s.nextLine();
-                try {
-                    String[] p = line.split(" \\| ");
-                    Task t = switch (p[0]) {
-                        case "T" -> new Todo(p[2]);
-                        case "D" -> new Deadline(p[2], p[3]);
-                        case "E" -> new Event(p[2], p[3], p[4]);
-                        default -> null;
-                    };
-                    if (t != null) {
-                        if (p[1].equals("1")) t.markAsDone();
-                        tasks.add(t);
-                    }
-                } catch (Exception e) {
-                    System.out.println("     [Warning] Skipping corrupted line: " + line);
+                Parser.CommandType commandType = Parser.parse(fullCommand);
+                if (commandType == Parser.CommandType.BYE) {
+                    isExit = true;
+                } else {
+                    handleCommand(fullCommand, commandType);
+                    storage.save(tasks);
                 }
+            } catch (NovaException e) {
+                ui.showError(e.getMessage());
+            } catch (IOException e) {
+                ui.showError("Error saving tasks: " + e.getMessage());
+            } finally {
+                ui.showLine();
             }
-        } catch (IOException e) {
-            System.out.println("     Error loading file.");
+        }
+        ui.showGoodbye();
+    }
+
+    private void handleCommand(String input, Parser.CommandType type) throws NovaException {
+        switch (type) {
+        case LIST -> listTasks();
+        case MARK -> markTask(input, true);
+        case UNMARK -> markTask(input, false);
+        case TODO -> addTodo(input);
+        case DEADLINE -> addDeadline(input);
+        case EVENT -> addEvent(input);
+        case DELETE -> deleteTask(input);
+        default -> throw new NovaException("OOPS!!! I don't know what that means.");
         }
     }
 
-    private void deleteTasks(ArrayList<Task> tasks, String input) throws NovaException {
-        try {
-            int index = Integer.parseInt(input.split(" ")[1]) - 1;
-            Task removed = tasks.remove(index);
-            System.out.println("     Noted. I've removed this task:\n       " + removed);
-            System.out.println("     Now you have " + tasks.size() + " tasks in the list.");
-        } catch (Exception e) {
-            throw new NovaException("OOPS!!! Invalid task number.");
+    private void listTasks() {
+        ui.showMessage("Here are the tasks in your list:");
+        for (int i = 0; i < tasks.size(); i++) {
+            try {
+                ui.showMessage((i + 1) + "." + tasks.get(i));
+            } catch (NovaException ignored) {}
         }
     }
 
-    private void addTodo(ArrayList<Task> tasks, String input) throws NovaException {
+    private void markTask(String input, boolean isDone) throws NovaException {
+        int index = Integer.parseInt(input.split(" ")[1]) - 1;
+        Task t = tasks.get(index);
+        if (isDone) t.markAsDone(); else t.markAsNotDone();
+        ui.showMessage(isDone ? "Nice! I've marked this task as done:" : "OK, I've marked this as not done:");
+        ui.showMessage("  " + t);
+    }
+
+    private void addTodo(String input) throws NovaException {
         String desc = input.length() > 4 ? input.substring(5).trim() : "";
-        if (desc.isEmpty()) throw new NovaException("OOPS!!! The description of a todo cannot be empty.");
-        tasks.add(new Todo(desc));
-        printAddMessage(tasks.get(tasks.size() - 1), tasks.size());
+        if (desc.isEmpty()) throw new NovaException("OOPS!!! Todo description is empty.");
+        Todo t = new Todo(desc);
+        tasks.add(t);
+        printAddMessage(t);
     }
 
-    private void addDeadline(ArrayList<Task> tasks, String input) throws NovaException {
+    private void addDeadline(String input) throws NovaException {
         try {
             String[] parts = input.substring(9).split(" /by ");
-            tasks.add(new Deadline(parts[0].trim(), parts[1].trim()));
-            printAddMessage(tasks.get(tasks.size() - 1), tasks.size());
+            Deadline d = new Deadline(parts[0].trim(), parts[1].trim());
+            tasks.add(d);
+            printAddMessage(d);
         } catch (Exception e) {
-            throw new NovaException("OOPS!!! Invalid format. Use: deadline <desc> /by <time>");
+            throw new NovaException("OOPS!!! Use: deadline <desc> /by <time>");
         }
     }
 
-    private void addEvent(ArrayList<Task> tasks, String input) throws NovaException {
+    private void addEvent(String input) throws NovaException {
         try {
             String[] first = input.substring(6).split(" /from ");
             String[] second = first[1].split(" /to ");
-            tasks.add(new Event(first[0].trim(), second[0].trim(), second[1].trim()));
-            printAddMessage(tasks.get(tasks.size() - 1), tasks.size());
+            Event e = new Event(first[0].trim(), second[0].trim(), second[1].trim());
+            tasks.add(e);
+            printAddMessage(e);
         } catch (Exception e) {
-            throw new NovaException("OOPS!!! Invalid format. Use: event <desc> /from <time> /to <time>");
+            throw new NovaException("OOPS!!! Use: event <desc> /from <time> /to <time>");
         }
     }
 
-    private void markTask(String input, ArrayList<Task> tasks, boolean markDone) throws NovaException {
-        try {
-            int index = Integer.parseInt(input.split(" ")[1]) - 1;
-            Task t = tasks.get(index);
-            if (markDone) t.markAsDone(); else t.markAsNotDone();
-            System.out.println("     " + (markDone ? "Nice! I've marked this task as done:" : "OK, I've marked this task as not done yet:"));
-            System.out.println("       " + t);
-        } catch (Exception e) {
-            throw new NovaException("OOPS!!! Invalid task number.");
-        }
+    private void deleteTask(String input) throws NovaException {
+        int index = Integer.parseInt(input.split(" ")[1]) - 1;
+        Task removed = tasks.remove(index);
+        ui.showMessage("Noted. I've removed this task:\n    " + removed);
+        ui.showMessage("Now you have " + tasks.size() + " tasks in the list.");
     }
 
-    private void listTasks(ArrayList<Task> tasks) {
-        System.out.println("     Here are the tasks in your list:");
-        for (int i = 0; i < tasks.size(); i++) {
-            System.out.println("     " + (i + 1) + "." + tasks.get(i));
-        }
+    private void printAddMessage(Task t) {
+        ui.showMessage("Got it. I've added this task:\n    " + t);
+        ui.showMessage("Now you have " + tasks.size() + " tasks in the list.");
     }
 
-    private void printAddMessage(Task task, int taskCount) {
-        System.out.println("     Got it. I've added this task:\n       " + task);
-        System.out.println("     Now you have " + taskCount + " tasks in the list.");
-    }
-
-    private void printWelcome() {
-        printDivider();
-        System.out.println("     Hello! I'm Nova\n     What can I do for you?");
-        printDivider();
-    }
-
-    private void printGoodbye() {
-        printDivider();
-        System.out.println("     Bye. Hope to see you again soon!");
-        printDivider();
-    }
-
-    private void printDivider() {
-        System.out.println("    ____________________________________________________________");
+    public static void main(String[] args) {
+        new Nova("./data/nova.txt").run();
     }
 }
