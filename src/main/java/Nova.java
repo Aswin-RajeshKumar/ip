@@ -1,11 +1,9 @@
 import java.util.Scanner;
+import java.util.ArrayList;
 
 public class Nova {
-
-    private static final int MAX_TASKS = 100;
-
     private enum Command {
-        LIST, MARK, UNMARK, TODO, DEADLINE, EVENT, BYE, UNKNOWN;
+        LIST, MARK, UNMARK, TODO, DEADLINE, EVENT, DELETE, BYE, UNKNOWN;
 
         static Command from(String input) {
             input = input.trim();
@@ -16,6 +14,7 @@ public class Nova {
             if (input.startsWith("todo")) return TODO;
             if (input.startsWith("deadline")) return DEADLINE;
             if (input.startsWith("event")) return EVENT;
+            if (input.startsWith("delete ")) return DELETE;
             return UNKNOWN;
         }
     }
@@ -26,150 +25,107 @@ public class Nova {
 
     private void run() {
         Scanner sc = new Scanner(System.in);
-        Task[] tasks = new Task[MAX_TASKS];
-        int taskCount = 0;
-
+        ArrayList<Task> tasks = new ArrayList<>();
         printWelcome();
 
         while (true) {
             String input = sc.nextLine().trim();
             Command command = Command.from(input);
-
             if (command == Command.BYE) break;
 
             printDivider();
-            taskCount = handleCommand(input, command, tasks, taskCount);
+            try {
+                handleCommand(input, command, tasks);
+            } catch (NovaException e) {
+                System.out.println("     " + e.getMessage());
+            }
             printDivider();
         }
-
         printGoodbye();
         sc.close();
     }
 
-    private int handleCommand(String input, Command command, Task[] tasks, int taskCount) {
+    private void handleCommand(String input, Command command, ArrayList<Task> tasks) throws NovaException {
         switch (command) {
-        case LIST -> listTasks(tasks, taskCount);
-        case MARK -> markTask(input, tasks, taskCount, true);
-        case UNMARK -> markTask(input, tasks, taskCount, false);
-        case TODO -> taskCount = addTodo(tasks, taskCount, input);
-        case DEADLINE -> taskCount = addDeadline(tasks, taskCount, input);
-        case EVENT -> taskCount = addEvent(tasks, taskCount, input);
-        default -> System.out.println("     OOPS!!! I'm sorry, but I don't know what that means :-(");
+        case LIST -> listTasks(tasks);
+        case MARK -> markTask(input, tasks, true);
+        case UNMARK -> markTask(input, tasks, false);
+        case TODO -> addTodo(tasks, input);
+        case DEADLINE -> addDeadline(tasks, input);
+        case EVENT -> addEvent(tasks, input);
+        case DELETE -> deleteTasks(tasks, input);
+        default -> throw new NovaException("OOPS!!! I'm sorry, but I don't know what that means :-(");
         }
-        return taskCount;
     }
 
-    private int addTodo(Task[] tasks, int taskCount, String input) {
-        if (taskCount >= MAX_TASKS) {
-            System.out.println("     Task list full! Cannot add more tasks.");
-            return taskCount;
-        }
-
-        String desc = input.length() > 4 ? input.substring(5).trim() : "";
-        if (desc.isEmpty()) {
-            System.out.println("     OOPS!!! The description of a todo cannot be empty.");
-            return taskCount;
-        }
-
-        tasks[taskCount] = new Todo(desc);
-        taskCount++;
-        printAddMessage(tasks[taskCount - 1], taskCount);
-        return taskCount;
-    }
-
-    private int addDeadline(Task[] tasks, int taskCount, String input) {
-        if (taskCount >= MAX_TASKS) {
-            System.out.println("     Task list full! Cannot add more tasks.");
-            return taskCount;
-        }
-
-        try {
-            String[] parts = input.substring(9).split(" /by ");
-            String desc = parts[0].trim();
-            String by = parts[1].trim();
-
-            if (desc.isEmpty() || by.isEmpty()) {
-                System.out.println("     OOPS!!! The description and date/time of a deadline cannot be empty.");
-                return taskCount;
-            }
-
-            tasks[taskCount] = new Deadline(desc, by);
-            taskCount++;
-            printAddMessage(tasks[taskCount - 1], taskCount);
-        } catch (Exception e) {
-            System.out.println("     OOPS!!! Invalid format. Use: deadline <desc> /by <time>");
-        }
-
-        return taskCount;
-    }
-
-    private int addEvent(Task[] tasks, int taskCount, String input) {
-        if (taskCount >= MAX_TASKS) {
-            System.out.println("     Task list full! Cannot add more tasks.");
-            return taskCount;
-        }
-
-        try {
-            String[] first = input.substring(6).split(" /from ");
-            String desc = first[0].trim();
-            String[] second = first[1].split(" /to ");
-            String from = second[0].trim();
-            String to = second[1].trim();
-
-            if (desc.isEmpty() || from.isEmpty() || to.isEmpty()) {
-                System.out.println("     OOPS!!! The description, start and end time of an event cannot be empty.");
-                return taskCount;
-            }
-
-            tasks[taskCount] = new Event(desc, from, to);
-            taskCount++;
-            printAddMessage(tasks[taskCount - 1], taskCount);
-        } catch (Exception e) {
-            System.out.println("     OOPS!!! Invalid format. Use: event <desc> /from <time> /to <time>");
-        }
-
-        return taskCount;
-    }
-
-    private void markTask(String input, Task[] tasks, int taskCount, boolean markDone) {
+    private void deleteTasks(ArrayList<Task> tasks, String input) throws NovaException {
         try {
             int index = Integer.parseInt(input.split(" ")[1]) - 1;
-            if (index < 0 || index >= taskCount) {
-                System.out.println("     OOPS!!! Invalid task number.");
-                return;
-            }
-
-            if (markDone) {
-                tasks[index].markAsDone();
-                System.out.println("     Nice! I've marked this task as done:");
-            } else {
-                tasks[index].markAsNotDone();
-                System.out.println("     OK, I've marked this task as not done yet:");
-            }
-
-            System.out.println("       " + tasks[index]);
+            if (index < 0 || index >= tasks.size()) throw new NovaException("OOPS!!! Invalid task number.");
+            Task removed = tasks.remove(index);
+            System.out.println("     Noted. I've removed this task:");
+            System.out.println("       " + removed);
+            System.out.println("     Now you have " + tasks.size() + " tasks in the list.");
         } catch (Exception e) {
-            System.out.println("     OOPS!!! Invalid command format.");
+            throw new NovaException("OOPS!!! Please provide a valid task number (e.g., delete 1).");
         }
     }
 
-    private void listTasks(Task[] tasks, int taskCount) {
+    private void addTodo(ArrayList<Task> tasks, String input) throws NovaException {
+        String desc = input.length() > 4 ? input.substring(5).trim() : "";
+        if (desc.isEmpty()) throw new NovaException("OOPS!!! The description of a todo cannot be empty.");
+        tasks.add(new Todo(desc));
+        printAddMessage(tasks.get(tasks.size() - 1), tasks.size());
+    }
+
+    private void addDeadline(ArrayList<Task> tasks, String input) throws NovaException {
+        try {
+            String[] parts = input.substring(9).split(" /by ");
+            tasks.add(new Deadline(parts[0].trim(), parts[1].trim()));
+            printAddMessage(tasks.get(tasks.size() - 1), tasks.size());
+        } catch (Exception e) {
+            throw new NovaException("OOPS!!! Use format: deadline <desc> /by <time>");
+        }
+    }
+
+    private void addEvent(ArrayList<Task> tasks, String input) throws NovaException {
+        try {
+            String[] first = input.substring(6).split(" /from ");
+            String[] second = first[1].split(" /to ");
+            tasks.add(new Event(first[0].trim(), second[0].trim(), second[1].trim()));
+            printAddMessage(tasks.get(tasks.size() - 1), tasks.size());
+        } catch (Exception e) {
+            throw new NovaException("OOPS!!! Use format: event <desc> /from <time> /to <time>");
+        }
+    }
+
+    private void markTask(String input, ArrayList<Task> tasks, boolean markDone) throws NovaException {
+        try {
+            int index = Integer.parseInt(input.split(" ")[1]) - 1;
+            Task t = tasks.get(index);
+            if (markDone) t.markAsDone(); else t.markAsNotDone();
+            System.out.println("     " + (markDone ? "Nice! I've marked this done:" : "OK, I've marked this not done:"));
+            System.out.println("       " + t);
+        } catch (Exception e) {
+            throw new NovaException("OOPS!!! Invalid task number.");
+        }
+    }
+
+    private void listTasks(ArrayList<Task> tasks) {
         System.out.println("     Here are the tasks in your list:");
-        for (int i = 0; i < taskCount; i++) {
-            System.out.println("     " + (i + 1) + "." + tasks[i]);
+        for (int i = 0; i < tasks.size(); i++) {
+            System.out.println("     " + (i + 1) + "." + tasks.get(i));
         }
     }
 
-    private void printAddMessage(Task task, int taskCount) {
-        System.out.println("     Got it. I've added this task:");
-        System.out.println("       " + task);
-        System.out.println("     Now you have " + taskCount + " tasks in the list.");
+    private void printAddMessage(Task task, int count) {
+        System.out.println("     Got it. I've added this task:\n       " + task);
+        System.out.println("     Now you have " + count + " tasks in the list.");
     }
 
     private void printWelcome() {
         printDivider();
-        System.out.println("     Hello! I'm Nova");
-        System.out.println("     What can I do for you?");
+        System.out.println("     Hello! I'm Nova\n     What can I do for you?");
         printDivider();
     }
 
@@ -183,4 +139,3 @@ public class Nova {
         System.out.println("    ____________________________________________________________");
     }
 }
-
