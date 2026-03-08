@@ -1,4 +1,5 @@
 import java.io.IOException;
+import java.util.ArrayList;
 
 public class Nova {
     private final Storage storage;
@@ -51,7 +52,21 @@ public class Nova {
         case DEADLINE -> addDeadline(input);
         case EVENT -> addEvent(input);
         case DELETE -> deleteTask(input);
+        case FIND -> findTask(input);
         default -> throw new NovaException("OOPS!!! I don't know what that means.");
+        }
+    }
+
+    private void findTask(String input) throws NovaException {
+        String keyword = input.length() > 5 ? input.substring(5).trim() : "";
+        if (keyword.isEmpty()) {
+            throw new NovaException("OOPS!!! The search keyword cannot be empty.");
+        }
+
+        ArrayList<Task> found = tasks.findTasks(keyword);
+        ui.showMessage("Here are the matching tasks in your list:");
+        for (int i = 0; i < found.size(); i++) {
+            ui.showMessage((i + 1) + "." + found.get(i));
         }
     }
 

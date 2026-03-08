@@ -1,6 +1,6 @@
 public class Parser {
     public enum CommandType {
-        LIST, MARK, UNMARK, TODO, DEADLINE, EVENT, DELETE, BYE, UNKNOWN
+        LIST, MARK, UNMARK, TODO, DEADLINE, EVENT, DELETE, BYE, FIND, UNKNOWN
     }
 
     public static CommandType parse(String input) {
@@ -13,6 +13,7 @@ public class Parser {
         if (trimmed.startsWith("deadline")) return CommandType.DEADLINE;
         if (trimmed.startsWith("event")) return CommandType.EVENT;
         if (trimmed.startsWith("delete ")) return CommandType.DELETE;
+        if (trimmed.startsWith("find ")) return CommandType.FIND;
         return CommandType.UNKNOWN;
     }
 }

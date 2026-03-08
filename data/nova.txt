@@ -1,1 +1,5 @@
 T | 1 | dance
+T | 0 | read book
+T | 0 | return book
+T | 0 | eat lunch
+T | 0 | finish exam
