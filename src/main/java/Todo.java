@@ -17,7 +17,7 @@ public class Todo extends Task {
      * Returns a string representation of the Todo task, prefixed with "[T]".
      * This unique identifier helps distinguish Todo tasks from other types like Deadlines or Events.
      *
-     * @return A formatted string representation of the task.
+     * @return A formatted string representation of the task
      */
     @Override
     public String toString() {
