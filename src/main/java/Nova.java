@@ -1,7 +1,12 @@
 import java.util.Scanner;
 import java.util.ArrayList;
+import java.io.*;
+import java.nio.file.*;
 
 public class Nova {
+    private static final String FILE_PATH = "./data/nova.txt";
+    private static final String DIR_PATH = "./data/";
+
     private enum Command {
         LIST, MARK, UNMARK, TODO, DEADLINE, EVENT, DELETE, BYE, UNKNOWN;
 
@@ -26,21 +31,26 @@ public class Nova {
     private void run() {
         Scanner sc = new Scanner(System.in);
         ArrayList<Task> tasks = new ArrayList<>();
+
+        loadTasks(tasks);
         printWelcome();
 
         while (true) {
             String input = sc.nextLine().trim();
             Command command = Command.from(input);
+
             if (command == Command.BYE) break;
 
             printDivider();
             try {
                 handleCommand(input, command, tasks);
+                saveTasks(tasks);
             } catch (NovaException e) {
                 System.out.println("     " + e.getMessage());
             }
             printDivider();
         }
+
         printGoodbye();
         sc.close();
     }
@@ -58,16 +68,60 @@ public class Nova {
         }
     }
 
+    private void saveTasks(ArrayList<Task> tasks) {
+        try {
+            Files.createDirectories(Paths.get(DIR_PATH));
+            BufferedWriter bw = new BufferedWriter(new FileWriter(FILE_PATH));
+            for (Task t : tasks) {
+                String type = (t instanceof Todo) ? "T" : (t instanceof Deadline) ? "D" : "E";
+                int done = t.isDone() ? 1 : 0;
+                String line = type + " | " + done + " | " + t.getDescription();
+                if (t instanceof Deadline) line += " | " + ((Deadline) t).getBy();
+                if (t instanceof Event) line += " | " + ((Event) t).getFrom() + " | " + ((Event) t).getTo();
+                bw.write(line);
+                bw.newLine();
+            }
+            bw.close();
+        } catch (IOException e) {
+            System.out.println("     Error saving file: " + e.getMessage());
+        }
+    }
+
+    private void loadTasks(ArrayList<Task> tasks) {
+        File f = new File(FILE_PATH);
+        if (!f.exists()) return;
+        try (Scanner s = new Scanner(f)) {
+            while (s.hasNext()) {
+                String line = s.nextLine();
+                try {
+                    String[] p = line.split(" \\| ");
+                    Task t = switch (p[0]) {
+                        case "T" -> new Todo(p[2]);
+                        case "D" -> new Deadline(p[2], p[3]);
+                        case "E" -> new Event(p[2], p[3], p[4]);
+                        default -> null;
+                    };
+                    if (t != null) {
+                        if (p[1].equals("1")) t.markAsDone();
+                        tasks.add(t);
+                    }
+                } catch (Exception e) {
+                    System.out.println("     [Warning] Skipping corrupted line: " + line);
+                }
+            }
+        } catch (IOException e) {
+            System.out.println("     Error loading file.");
+        }
+    }
+
     private void deleteTasks(ArrayList<Task> tasks, String input) throws NovaException {
         try {
             int index = Integer.parseInt(input.split(" ")[1]) - 1;
-            if (index < 0 || index >= tasks.size()) throw new NovaException("OOPS!!! Invalid task number.");
             Task removed = tasks.remove(index);
-            System.out.println("     Noted. I've removed this task:");
-            System.out.println("       " + removed);
+            System.out.println("     Noted. I've removed this task:\n       " + removed);
             System.out.println("     Now you have " + tasks.size() + " tasks in the list.");
         } catch (Exception e) {
-            throw new NovaException("OOPS!!! Please provide a valid task number (e.g., delete 1).");
+            throw new NovaException("OOPS!!! Invalid task number.");
         }
     }
 
@@ -84,7 +138,7 @@ public class Nova {
             tasks.add(new Deadline(parts[0].trim(), parts[1].trim()));
             printAddMessage(tasks.get(tasks.size() - 1), tasks.size());
         } catch (Exception e) {
-            throw new NovaException("OOPS!!! Use format: deadline <desc> /by <time>");
+            throw new NovaException("OOPS!!! Invalid format. Use: deadline <desc> /by <time>");
         }
     }
 
@@ -95,7 +149,7 @@ public class Nova {
             tasks.add(new Event(first[0].trim(), second[0].trim(), second[1].trim()));
             printAddMessage(tasks.get(tasks.size() - 1), tasks.size());
         } catch (Exception e) {
-            throw new NovaException("OOPS!!! Use format: event <desc> /from <time> /to <time>");
+            throw new NovaException("OOPS!!! Invalid format. Use: event <desc> /from <time> /to <time>");
         }
     }
 
@@ -104,7 +158,7 @@ public class Nova {
             int index = Integer.parseInt(input.split(" ")[1]) - 1;
             Task t = tasks.get(index);
             if (markDone) t.markAsDone(); else t.markAsNotDone();
-            System.out.println("     " + (markDone ? "Nice! I've marked this done:" : "OK, I've marked this not done:"));
+            System.out.println("     " + (markDone ? "Nice! I've marked this task as done:" : "OK, I've marked this task as not done yet:"));
             System.out.println("       " + t);
         } catch (Exception e) {
             throw new NovaException("OOPS!!! Invalid task number.");
@@ -118,9 +172,9 @@ public class Nova {
         }
     }
 
-    private void printAddMessage(Task task, int count) {
+    private void printAddMessage(Task task, int taskCount) {
         System.out.println("     Got it. I've added this task:\n       " + task);
-        System.out.println("     Now you have " + count + " tasks in the list.");
+        System.out.println("     Now you have " + taskCount + " tasks in the list.");
     }
 
     private void printWelcome() {
