@@ -6,11 +6,6 @@ public class Task {
     private final String description;
     private boolean isDone;
 
-    /**
-     * Constructs a new Task with the given description.
-     *
-     * @param description Description of the task
-     */
     public Task(String description) {
         this.description = description;
         this.isDone = false;
@@ -26,6 +21,16 @@ public class Task {
 
     public String getStatusIcon() {
         return isDone ? "X" : " ";
+    }
+
+    // Added for Level-7 Save functionality
+    public String getDescription() {
+        return description;
+    }
+
+    // Added for Level-7 Save functionality
+    public boolean isDone() {
+        return isDone;
     }
 
     @Override
